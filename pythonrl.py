@@ -128,23 +128,13 @@ class Object:
             self.y += dy
  
     def move_towards(self, target_x, target_y):
-        #vector from this object to the target, and distance
-        dx = target_x - self.x
-        dy = target_y - self.y
-        distance = math.sqrt(dx ** 2 + dy ** 2)
- 
-        #normalize it to length 1 (preserving direction), then round it and
-        #convert to integer so the movement is restricted to the map grid
-        #dx = int(round(dx / distance))
-        #dy = int(round(dy / distance))
-
-		#TWEAK MEU PER APROFITAR LIBTCOD I ELIMINAR BUG MONSTRES I PORTES
+	#Upgraded the move_towards to use the libtcod path algorythms and solving a bug 
+	#where the monsters "waited" near the doors
         path = libtcod.path_new_using_map(fov_map)
         libtcod.path_compute(path, self.x, self.y, target_x, target_y)
         (end_x,end_y) = libtcod.path_get(path, 0)
         dx = end_x - self.x
         dy = end_y - self.y
-		#END OF TWEAK
 
         self.move(dx, dy)
  
