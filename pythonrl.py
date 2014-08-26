@@ -130,12 +130,17 @@ class Object:
     def move_towards(self, target_x, target_y):
 	#Upgraded the move_towards to use the libtcod path algorythms and solving a bug 
 	#where the monsters "waited" near the doors
-        path = libtcod.path_new_using_map(fov_map)
+        #path = libtcod.path_new_using_map(fov_map,1)
+        path = libtcod.path_new_using_function(MAP_WIDTH, MAP_HEIGHT, path_func, map, 1)
         libtcod.path_compute(path, self.x, self.y, target_x, target_y)
         (end_x,end_y) = libtcod.path_get(path, 0)
         dx = end_x - self.x
         dy = end_y - self.y
+        self.move(dx, dy)
 
+    def move_random(self):
+        dx = libtcod.random_get_int(0, -1, 1)
+        dy = libtcod.random_get_int(0, -1, 1)
         self.move(dx, dy)
  
     def distance_to(self, other):
@@ -228,16 +233,21 @@ class BasicMonster:
     def take_turn(self):
         #a basic monster takes its turn. if you can see it, it can see you
         monster = self.owner
-        if libtcod.map_is_in_fov(fov_map, monster.x, monster.y):
- 
-            #move towards player if far away
+        if libtcod.map_is_in_fov(fov_map, monster.x, monster.y): #if a monster sees you he chases you
+             #move towards player if far away
             if monster.distance_to(player) >= 2:
                 monster.move_towards(player.x, player.y)
  
             #close enough, attack! (if the player is still alive.)
             elif player.fighter.hp > 0:
                 monster.fighter.attack(player)
- 
+
+        else: #if it doesnt it just makes random walk
+            monster.move_random()
+
+#class CowardMonster:
+#class CleverMonster:
+
 class ConfusedMonster:
     #AI for a temporarily confused monster (reverts to previous AI after a while).
     def __init__(self, old_ai, num_turns=CONFUSE_NUM_TURNS):
@@ -247,7 +257,7 @@ class ConfusedMonster:
     def take_turn(self):
         if self.num_turns > 0:  #still confused...
             #move in a random direction, and decrease the number of turns confused
-            self.owner.move(libtcod.random_get_int(0, -1, 1), libtcod.random_get_int(0, -1, 1))
+            self.owner.move_random()
             self.num_turns -= 1
  
         else:  #restore the previous AI (this one will be deleted because it's not referenced anymore)
@@ -347,7 +357,18 @@ def get_all_equipped(obj):  #returns a list of equipped items
     else:
         return []  #other objects have no equipment
  
- 
+#function for pathfinding accounting blocking monsters
+def path_func(xFrom, yFrom, xTo, yTo, map):
+    if map[xTo][yTo].blocked:
+        return 100
+    else:
+        for object in objects:
+            if object != player and object.blocks and object.x == xTo and object.y == yTo:
+				return 4
+        return 1
+    return 1
+
+
 def is_blocked(x, y):
     #first test the map tile
     if map[x][y].blocked:
@@ -489,12 +510,13 @@ def place_objects(room):
     #this is where we decide the chance of each monster or item appearing.
  
     #maximum number of monsters per room
-    max_monsters = from_dungeon_level([[2, 1], [3, 4], [5, 6]])
+    max_monsters = from_dungeon_level([[3, 1], [5, 4], [7, 6], [11, 8]])
  
     #chance of each monster
     monster_chances = {}
-    monster_chances['orc'] = 80  #orc always shows up, even if all other monsters have 0 chance
-    monster_chances['troll'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
+    monster_chances['rat'] = 80  #orc always shows up, even if all other monsters have 0 chance
+    monster_chances['zombie'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
+    monster_chances['boss'] = from_dungeon_level([[5, 3], [15, 5], [30, 7], [50, 11]])
  
     #maximum number of items per room
     max_items = from_dungeon_level([[1, 1], [2, 4]])
@@ -520,20 +542,25 @@ def place_objects(room):
         #only place it if the tile is not blocked
         if not is_blocked(x, y):
             choice = random_choice(monster_chances)
-            if choice == 'orc':
-                #create an orc
+            if choice == 'rat':
+                #create a rat
                 fighter_component = Fighter(hp=20, defense=0, power=4, xp=35, death_function=monster_death)
                 ai_component = BasicMonster()
- 
-                monster = Object(x, y, 'o', 'orc', libtcod.desaturated_green,
+                monster = Object(x, y, 'r', 'rat', libtcod.desaturated_green,
                                  blocks=True, fighter=fighter_component, ai=ai_component)
  
-            elif choice == 'troll':
-                #create a troll
+            elif choice == 'zombie':
+                #create a zombie
                 fighter_component = Fighter(hp=30, defense=2, power=8, xp=100, death_function=monster_death)
                 ai_component = BasicMonster()
- 
-                monster = Object(x, y, 'T', 'troll', libtcod.darker_green,
+                monster = Object(x, y, 'Z', 'zombie', libtcod.darker_green,
+                                 blocks=True, fighter=fighter_component, ai=ai_component)
+
+            elif choice == 'boss':
+                #create a zombie
+                fighter_component = Fighter(hp=150, defense=4, power=16, xp=300, death_function=monster_death)
+                ai_component = BasicMonster()
+                monster = Object(x, y, 'B', 'boss', libtcod.darker_purple,
                                  blocks=True, fighter=fighter_component, ai=ai_component)
  
             objects.append(monster)
@@ -568,16 +595,36 @@ def place_objects(room):
                 #create a confuse scroll
                 item_component = Item(use_function=cast_confuse)
                 item = Object(x, y, '#', 'scroll of confusion', libtcod.light_yellow, item=item_component)
- 
+
+            elif choice == 'dagger':
+                #create a stick
+                equipment_component = Equipment(slot='right hand', power_bonus=1)
+                item = Object(x, y, '-', 'dagger +1', libtcod.sky, equipment=equipment_component)
+
+            elif choice == 'stick':
+                #create a stick
+                equipment_component = Equipment(slot='right hand', power_bonus=2)
+                item = Object(x, y, '\\', 'stick +2', libtcod.sky, equipment=equipment_component)
+
             elif choice == 'sword':
                 #create a sword
                 equipment_component = Equipment(slot='right hand', power_bonus=3)
-                item = Object(x, y, '/', 'sword', libtcod.sky, equipment=equipment_component)
- 
+                item = Object(x, y, '/', 'sword +3', libtcod.sky, equipment=equipment_component)
+
+            elif choice == 'chainsaw':
+                #create a chainsaw
+                equipment_component = Equipment(slot='right hand', power_bonus=5)
+                item = Object(x, y, 'P', 'chainsaw +5', libtcod.sky, equipment=equipment_component)
+
+            elif choice == 'buckler':
+                #create a buckler
+                equipment_component = Equipment(slot='left hand', defense_bonus=1)
+                item = Object(x, y, 'o', 'buckler +1', libtcod.darker_orange, equipment=equipment_component)
+
             elif choice == 'shield':
                 #create a shield
-                equipment_component = Equipment(slot='left hand', defense_bonus=1)
-                item = Object(x, y, '[', 'shield', libtcod.darker_orange, equipment=equipment_component)
+                equipment_component = Equipment(slot='left hand', defense_bonus=2)
+                item = Object(x, y, '[', 'shield +2', libtcod.darker_orange, equipment=equipment_component)
  
             objects.append(item)
             item.send_to_back()  #items appear below other objects
@@ -668,10 +715,13 @@ def render_all():
         libtcod.console_print_ex(panel, MSG_X, y, libtcod.BKGND_NONE, libtcod.LEFT,line)
         y += 1
  
-    #show the player's stats
+    #show the player's HP
     render_bar(1, 1, BAR_WIDTH, 'HP', player.fighter.hp, player.fighter.max_hp,
                libtcod.light_red, libtcod.darker_red)
-    libtcod.console_print_ex(panel, 1, 3, libtcod.BKGND_NONE, libtcod.LEFT, 'Dungeon level ' + str(dungeon_level))
+    #show the player's XP
+    render_bar(1, 3, BAR_WIDTH, 'XP', player.fighter.xp, LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR,
+               libtcod.light_yellow, libtcod.darker_yellow)
+    libtcod.console_print_ex(panel, 1, 5, libtcod.BKGND_NONE, libtcod.LEFT, 'Dungeon level ' + str(dungeon_level))
  
     #display names of objects under the mouse
     libtcod.console_set_default_foreground(panel, libtcod.light_gray)
@@ -1038,8 +1088,8 @@ def new_game():
     message('Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.', libtcod.red)
  
     #initial equipment: a dagger
-    equipment_component = Equipment(slot='right hand', power_bonus=2)
-    obj = Object(0, 0, '-', 'dagger', libtcod.sky, equipment=equipment_component)
+    equipment_component = Equipment(slot='right hand', power_bonus=1)
+    obj = Object(0, 0, '-', 'dagger +1', libtcod.sky, equipment=equipment_component)
     inventory.append(obj)
     equipment_component.equip()
     obj.always_visible = True
@@ -1111,8 +1161,8 @@ def main_menu():
         #show the game's title, and some credits!
         libtcod.console_set_default_foreground(0, libtcod.light_yellow)
         libtcod.console_print_ex(0, SCREEN_WIDTH/2, SCREEN_HEIGHT/2-4, libtcod.BKGND_NONE, libtcod.CENTER,
-                                 'TOMBS OF THE ANCIENT KINGS')
-        libtcod.console_print_ex(0, SCREEN_WIDTH/2, SCREEN_HEIGHT-2, libtcod.BKGND_NONE, libtcod.CENTER, 'By Jotaf')
+                                 'FUCK DA ZOMBIES')
+        libtcod.console_print_ex(0, SCREEN_WIDTH/2, SCREEN_HEIGHT-2, libtcod.BKGND_NONE, libtcod.CENTER, 'By Sudobat')
  
         #show options and wait for the player's choice
         choice = menu('', ['Play a new game', 'Continue last game', 'Quit'], 24)
