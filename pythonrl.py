@@ -505,7 +505,45 @@ def from_dungeon_level(table):
         if dungeon_level >= level:
             return value
     return 0
- 
+
+def spawn_monster():
+	if libtcod.random_get_int(0, 1, 100) > 99:
+		#chance of each monster
+		monster_chances = {}
+		monster_chances['rat'] = 80  #orc always shows up, even if all other monsters have 0 chance
+		monster_chances['zombie'] = from_dungeon_level([[15, 3], [30, 5], [60, 7]])
+		monster_chances['boss'] = from_dungeon_level([[5, 3], [15, 5], [30, 7], [50, 11]])
+
+		x = libtcod.random_get_int(0, 1, MAP_WIDTH-1)
+		y = libtcod.random_get_int(0, 1, MAP_HEIGHT-1)
+
+		#only place it if the tile is not blocked
+		if not is_blocked(x, y) and not libtcod.map_is_in_fov(fov_map, x, y):
+		    choice = random_choice(monster_chances)
+		    if choice == 'rat':
+		        #create a rat
+		        fighter_component = Fighter(hp=10, defense=0, power=4, xp=35, death_function=monster_death)
+		        ai_component = BasicMonster()
+		        monster = Object(x, y, 'r', 'rat', libtcod.desaturated_green,
+		                         blocks=True, fighter=fighter_component, ai=ai_component)
+
+		    elif choice == 'zombie':
+		        #create a zombie
+		        fighter_component = Fighter(hp=30, defense=2, power=8, xp=100, death_function=monster_death)
+		        ai_component = BasicMonster()
+		        monster = Object(x, y, 'Z', 'zombie', libtcod.darker_green,
+		                         blocks=True, fighter=fighter_component, ai=ai_component)
+
+		    elif choice == 'boss':
+		        #create a zombie
+		        fighter_component = Fighter(hp=150, defense=4, power=16, xp=300, death_function=monster_death)
+		        ai_component = BasicMonster()
+		        monster = Object(x, y, 'B', 'boss', libtcod.darker_purple,
+		                         blocks=True, fighter=fighter_component, ai=ai_component)
+
+		    objects.append(monster)
+		    print 'Monster spawned'
+
 def place_objects(room):
     #this is where we decide the chance of each monster or item appearing.
  
@@ -544,7 +582,7 @@ def place_objects(room):
             choice = random_choice(monster_chances)
             if choice == 'rat':
                 #create a rat
-                fighter_component = Fighter(hp=20, defense=0, power=4, xp=35, death_function=monster_death)
+                fighter_component = Fighter(hp=10, defense=0, power=4, xp=35, death_function=monster_death)
                 ai_component = BasicMonster()
                 monster = Object(x, y, 'r', 'rat', libtcod.desaturated_green,
                                  blocks=True, fighter=fighter_component, ai=ai_component)
@@ -1085,7 +1123,7 @@ def new_game():
     game_msgs = []
  
     #a warm welcoming message!
-    message('Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.', libtcod.red)
+    message('Welcome stranger. In order to survive you must find the cure to the zombie disease on lvl 15.', libtcod.red)
  
     #initial equipment: a dagger
     equipment_component = Equipment(slot='right hand', power_bonus=1)
@@ -1150,6 +1188,10 @@ def play_game():
             for object in objects:
                 if object.ai:
                     object.ai.take_turn()
+
+        #spawns some random monster from time to time
+        #(not to be allowed without hunger because of farming, just for testing)
+        spawn_monster()
  
 def main_menu():
     img = libtcod.image_load('menu_background.png')
