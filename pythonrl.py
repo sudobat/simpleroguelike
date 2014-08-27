@@ -142,7 +142,21 @@ class Object:
         dx = libtcod.random_get_int(0, -1, 1)
         dy = libtcod.random_get_int(0, -1, 1)
         self.move(dx, dy)
- 
+
+    def move_away(self, target_x, target_y):
+        #we are not sure it is possible at all to move away (walls) so we give him 3 tries
+        tries = 30
+        dist_ini = int(round(self.distance(target_x, target_y)))
+        dx = libtcod.random_get_int(0, -1, 1)
+        dy = libtcod.random_get_int(0, -1, 1)
+        dist_end = int(round(math.sqrt((self.x+dx - target_x) ** 2 + (self.y+dy - target_y) ** 2)))
+        while dist_end <= dist_ini and not is_blocked(self.x+dx, self.y+dy) and tries > 0:
+            dx = libtcod.random_get_int(0, -1, 1)
+            dy = libtcod.random_get_int(0, -1, 1)
+            dist_end = int(round(math.sqrt((self.x+dx - target_x) ** 2 + (self.y+dy - target_y) ** 2)))
+            tries -= 1
+        self.move(dx, dy)
+
     def distance_to(self, other):
         #return the distance to another object
         dx = other.x - self.x
@@ -199,7 +213,10 @@ class Fighter:
  
     def attack(self, target):
         #a simple formula for attack damage
-        damage = self.power - target.fighter.defense
+        #damage = self.power - target.fighter.defense
+
+        #lets improve it
+        damage = (self.power - target.fighter.defense) + libtcod.random_get_int(0, -2, 2)
  
         if damage > 0:
             #make the target take some damage
@@ -245,8 +262,52 @@ class BasicMonster:
         else: #if it doesnt it just makes random walk
             monster.move_random()
 
-#class CowardMonster:
+class CowardMonster:
+    #AI for a coward monster, it will run when severly hurt.
+    def take_turn(self):
+        #a basic monster takes its turn. if you can see it, it can see you
+        monster = self.owner
+        if libtcod.map_is_in_fov(fov_map, monster.x, monster.y): #if a monster sees you he chases you
+            #we check if it has been attacked
+            if monster.fighter.hp > monster.fighter.max_hp/2:
+                #move towards player if far away
+                if monster.distance_to(player) >= 2:
+                    monster.move_towards(player.x, player.y)
+ 
+                #close enough, attack! (if the player is still alive.)
+                elif player.fighter.hp > 0:
+                    monster.fighter.attack(player)
+
+            else:
+                #go away!
+                monster.move_away(player.x, player.y)
+
+        else: #if it doesnt it just makes random walk
+            monster.move_random()
+
 #class CleverMonster:
+class PacificMonster:
+    #AI for a pacific monster, it won't attack unless it's attacked.
+    def take_turn(self):
+        #a basic monster takes its turn. if you can see it, it can see you
+        monster = self.owner
+        if libtcod.map_is_in_fov(fov_map, monster.x, monster.y): #if a monster sees you he chases you
+            #we check if it has been attacked
+            if monster.fighter.hp < monster.fighter.hp_max:
+                #move towards player if far away
+                if monster.distance_to(player) >= 2:
+                    monster.move_towards(player.x, player.y)
+ 
+                #close enough, attack! (if the player is still alive.)
+                elif player.fighter.hp > 0:
+                    monster.fighter.attack(player)
+
+            else:
+                #act pacifically
+                monster.move_random()
+
+        else: #if it doesnt it just makes random walk
+            monster.move_random()
 
 class ConfusedMonster:
     #AI for a temporarily confused monster (reverts to previous AI after a while).
@@ -583,7 +644,7 @@ def place_objects(room):
             if choice == 'rat':
                 #create a rat
                 fighter_component = Fighter(hp=10, defense=0, power=4, xp=35, death_function=monster_death)
-                ai_component = BasicMonster()
+                ai_component = CowardMonster()
                 monster = Object(x, y, 'r', 'rat', libtcod.desaturated_green,
                                  blocks=True, fighter=fighter_component, ai=ai_component)
  
@@ -1191,7 +1252,7 @@ def play_game():
 
         #spawns some random monster from time to time
         #(not to be allowed without hunger because of farming, just for testing)
-        spawn_monster()
+        #spawn_monster()
  
 def main_menu():
     img = libtcod.image_load('menu_background.png')
